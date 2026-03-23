@@ -1,21 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { getDatabase } from '../../src/lib/database';
-
-interface ProgressStats {
-  totalLearned: number;
-  totalUnknown: number;
-  totalUnseen: number;
-  tier1: number;
-  tier2: number;
-  tier3: number;
-  tier4: number;
-  nouns: number;
-  verbs: number;
-  adjectives: number;
-  adverbs: number;
-}
+import { getProgressStats, type ProgressStats } from '../../src/lib/database';
 
 export default function ProgressScreen() {
   const [stats, setStats] = useState<ProgressStats>({
@@ -31,59 +17,8 @@ export default function ProgressScreen() {
   );
 
   async function loadStats() {
-    const db = await getDatabase();
-
-    const totals = await db.getFirstAsync<{
-      totalLearned: number;
-      totalUnknown: number;
-      totalUnseen: number;
-    }>(`
-      SELECT
-        COUNT(CASE WHEN status = 'known' THEN 1 END) as totalLearned,
-        COUNT(CASE WHEN status = 'unknown' THEN 1 END) as totalUnknown,
-        COUNT(CASE WHEN status = 'unseen' THEN 1 END) as totalUnseen
-      FROM user_words
-    `);
-
-    const tiers = await db.getFirstAsync<{
-      tier1: number; tier2: number; tier3: number; tier4: number;
-    }>(`
-      SELECT
-        COUNT(CASE WHEN w.difficulty_tier = 1 THEN 1 END) as tier1,
-        COUNT(CASE WHEN w.difficulty_tier = 2 THEN 1 END) as tier2,
-        COUNT(CASE WHEN w.difficulty_tier = 3 THEN 1 END) as tier3,
-        COUNT(CASE WHEN w.difficulty_tier = 4 THEN 1 END) as tier4
-      FROM user_words uw
-      JOIN words w ON uw.word_id = w.id
-      WHERE uw.status = 'known'
-    `);
-
-    const pos = await db.getFirstAsync<{
-      nouns: number; verbs: number; adjectives: number; adverbs: number;
-    }>(`
-      SELECT
-        COUNT(CASE WHEN w.pos = 'noun' THEN 1 END) as nouns,
-        COUNT(CASE WHEN w.pos = 'verb' THEN 1 END) as verbs,
-        COUNT(CASE WHEN w.pos = 'adjective' THEN 1 END) as adjectives,
-        COUNT(CASE WHEN w.pos = 'adverb' THEN 1 END) as adverbs
-      FROM user_words uw
-      JOIN words w ON uw.word_id = w.id
-      WHERE uw.status = 'known'
-    `);
-
-    setStats({
-      totalLearned: totals?.totalLearned ?? 0,
-      totalUnknown: totals?.totalUnknown ?? 0,
-      totalUnseen: totals?.totalUnseen ?? 0,
-      tier1: tiers?.tier1 ?? 0,
-      tier2: tiers?.tier2 ?? 0,
-      tier3: tiers?.tier3 ?? 0,
-      tier4: tiers?.tier4 ?? 0,
-      nouns: pos?.nouns ?? 0,
-      verbs: pos?.verbs ?? 0,
-      adjectives: pos?.adjectives ?? 0,
-      adverbs: pos?.adverbs ?? 0,
-    });
+    const result = await getProgressStats();
+    setStats(result);
   }
 
   const coveragePercent = Math.round((stats.tier1 + stats.tier2) / 1500 * 100);

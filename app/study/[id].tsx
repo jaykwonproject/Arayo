@@ -80,7 +80,7 @@ export default function StudyScreen() {
       setSummary(sum);
       // Save results
       for (const r of sum.results) {
-        updateWordStatus(r.wordId, r.knew ? 'known' : 'unknown');
+        await updateWordStatus(r.wordId, r.knew ? 'known' : 'unknown');
       }
       setCurrentCard(null);
     } else {

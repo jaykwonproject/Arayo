@@ -235,13 +235,90 @@ export async function saveExtraction(
   thumbnailUrl: string,
   words: ExtractedWord[]
 ): Promise<number> {
-  const videoId = await insertVideo(youtubeId, title, thumbnailUrl);
+  const database = await getDatabase();
+  let videoId = 0;
 
-  for (const word of words) {
-    const wordId = await insertWord(word);
-    await linkWordToVideo(videoId, wordId, word.frequency_in_video, word.sentence_context);
-    await ensureUserWord(wordId);
-  }
+  await database.withTransactionAsync(async () => {
+    videoId = await insertVideo(youtubeId, title, thumbnailUrl);
+
+    for (const word of words) {
+      const wordId = await insertWord(word);
+      await linkWordToVideo(videoId, wordId, word.frequency_in_video, word.sentence_context);
+      await ensureUserWord(wordId);
+    }
+  });
 
   return videoId;
+}
+
+// --- Progress stats ---
+
+export interface ProgressStats {
+  totalLearned: number;
+  totalUnknown: number;
+  totalUnseen: number;
+  tier1: number;
+  tier2: number;
+  tier3: number;
+  tier4: number;
+  nouns: number;
+  verbs: number;
+  adjectives: number;
+  adverbs: number;
+}
+
+export async function getProgressStats(): Promise<ProgressStats> {
+  const database = await getDatabase();
+
+  const totals = await database.getFirstAsync<{
+    totalLearned: number;
+    totalUnknown: number;
+    totalUnseen: number;
+  }>(`
+    SELECT
+      COUNT(CASE WHEN status = 'known' THEN 1 END) as totalLearned,
+      COUNT(CASE WHEN status = 'unknown' THEN 1 END) as totalUnknown,
+      COUNT(CASE WHEN status = 'unseen' THEN 1 END) as totalUnseen
+    FROM user_words
+  `);
+
+  const tiers = await database.getFirstAsync<{
+    tier1: number; tier2: number; tier3: number; tier4: number;
+  }>(`
+    SELECT
+      COUNT(CASE WHEN w.difficulty_tier = 1 THEN 1 END) as tier1,
+      COUNT(CASE WHEN w.difficulty_tier = 2 THEN 1 END) as tier2,
+      COUNT(CASE WHEN w.difficulty_tier = 3 THEN 1 END) as tier3,
+      COUNT(CASE WHEN w.difficulty_tier = 4 THEN 1 END) as tier4
+    FROM user_words uw
+    JOIN words w ON uw.word_id = w.id
+    WHERE uw.status = 'known'
+  `);
+
+  const pos = await database.getFirstAsync<{
+    nouns: number; verbs: number; adjectives: number; adverbs: number;
+  }>(`
+    SELECT
+      COUNT(CASE WHEN w.pos = 'noun' THEN 1 END) as nouns,
+      COUNT(CASE WHEN w.pos = 'verb' THEN 1 END) as verbs,
+      COUNT(CASE WHEN w.pos = 'adjective' THEN 1 END) as adjectives,
+      COUNT(CASE WHEN w.pos = 'adverb' THEN 1 END) as adverbs
+    FROM user_words uw
+    JOIN words w ON uw.word_id = w.id
+    WHERE uw.status = 'known'
+  `);
+
+  return {
+    totalLearned: totals?.totalLearned ?? 0,
+    totalUnknown: totals?.totalUnknown ?? 0,
+    totalUnseen: totals?.totalUnseen ?? 0,
+    tier1: tiers?.tier1 ?? 0,
+    tier2: tiers?.tier2 ?? 0,
+    tier3: tiers?.tier3 ?? 0,
+    tier4: tiers?.tier4 ?? 0,
+    nouns: pos?.nouns ?? 0,
+    verbs: pos?.verbs ?? 0,
+    adjectives: pos?.adjectives ?? 0,
+    adverbs: pos?.adverbs ?? 0,
+  };
 }
